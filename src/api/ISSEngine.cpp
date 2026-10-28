@@ -57,7 +57,30 @@
 //#if defined __UNIX__
 #include <float.h>
 //#endif
- 
+
+// Flush-to-zero for denormals during the NMF updates. The original code used
+// the SSE-only _MM_SET_FLUSH_ZERO_MODE macro; on arm64 the equivalent is the
+// FZ bit (bit 24) of the FPCR register.
+#if defined(__x86_64__) || defined(__i386__) || defined(_M_X64) || defined(_M_IX86)
+  #include <xmmintrin.h>
+  static inline void issSetFlushToZero(bool on)
+  {
+      _MM_SET_FLUSH_ZERO_MODE(on ? _MM_FLUSH_ZERO_ON : _MM_FLUSH_ZERO_OFF);
+  }
+#elif defined(__aarch64__) || defined(__arm64__)
+  #include <stdint.h>
+  static inline void issSetFlushToZero(bool on)
+  {
+      uint64_t fpcr;
+      __asm__ __volatile__("mrs %0, fpcr" : "=r"(fpcr));
+      if (on) fpcr |=  (UINT64_C(1) << 24);
+      else    fpcr &= ~(UINT64_C(1) << 24);
+      __asm__ __volatile__("msr fpcr, %0" : : "r"(fpcr));
+  }
+#else
+  static inline void issSetFlushToZero(bool) {}
+#endif
+
 
 using namespace std;
 
@@ -668,7 +691,7 @@ void ISSEngine::updateMixtureSeparation( Matrix *M1, Matrix *M2, double & progre
     //double totalTime(0);
     //totalTime = tic();
     
-    _MM_SET_FLUSH_ZERO_MODE(_MM_FLUSH_ZERO_ON);
+    issSetFlushToZero(true);
 
     
     int Nf = Vn.rows();
@@ -725,7 +748,7 @@ void ISSEngine::updateMixtureSeparation( Matrix *M1, Matrix *M2, double & progre
         H.row(i) = H.row(i) * gain;
     }
     
-    _MM_SET_FLUSH_ZERO_MODE(_MM_FLUSH_ZERO_OFF);
+    issSetFlushToZero(false);
     
     render();
     progress = ( 1.0 );
