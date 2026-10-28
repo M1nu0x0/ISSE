@@ -70,6 +70,7 @@ public:
     virtual Result saveDocument (const File &file);
     virtual File   getLastDocumentOpened ();
     virtual void   setLastDocumentOpened (const File &file);
+    virtual File   getSuggestedSaveAsFile (const File &defaultFile);
     virtual String getDocumentTitle ();
     
     // Separation Engine

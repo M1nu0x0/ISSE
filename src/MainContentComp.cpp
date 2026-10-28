@@ -234,7 +234,7 @@ Result 	MainContentComp::saveDocument (const File &file)
     
     SaveThread m(this, file, logf);
     if (m.runThread())
-        return Result::ok();
+        return m.getResult();
     else
         return Result::fail("User canceled");
         
@@ -251,6 +251,21 @@ File MainContentComp::getLastDocumentOpened ()
 void MainContentComp::setLastDocumentOpened (const File &file)
 {
     lastfileOpen = file;
+}
+
+// With no project opened yet, JUCE derives the Save As default from an empty
+// file, which ends up at the root of the disk ("Macintosh HD"). That folder is
+// not writable, so fall back to the user's Documents folder.
+File MainContentComp::getSuggestedSaveAsFile (const File &defaultFile)
+{
+    File suggested (defaultFile);
+    const File folder (suggested.getParentDirectory());
+
+    if (! folder.isDirectory() || ! folder.hasWriteAccess())
+        suggested = File::getSpecialLocation (File::userDocumentsDirectory)
+                        .getChildFile (defaultFile.getFileName());
+
+    return FileBasedDocument::getSuggestedSaveAsFile (suggested);
 }
 
 
@@ -339,9 +354,9 @@ void MainContentComp::resized()
 
 bool MainContentComp::saveToXML( XmlElement & xml, const File & folderForAssets )
 {
-    SeparationEngine::getInstance()->saveToXML(xml, folderForAssets);
-    multiPaintView->saveToXML(xml, folderForAssets);
-    return true;
+    const bool engineSaved = SeparationEngine::getInstance()->saveToXML(xml, folderForAssets);
+    const bool viewSaved   = multiPaintView->saveToXML(xml, folderForAssets);
+    return engineSaved && viewSaved;
 }
  
 

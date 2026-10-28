@@ -309,8 +309,7 @@ bool MultiPaintView::saveToXML( XmlElement & xml, const File & folderForAssets )
 {
 //    std::cout << "saving xml:" << folderForAssets.getFullPathName() << std::endl;
     
-    multiTrack->saveToXML(xml, folderForAssets);
-    return true;
+    return multiTrack->saveToXML(xml, folderForAssets);
 }
 
 

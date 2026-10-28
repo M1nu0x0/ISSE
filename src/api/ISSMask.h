@@ -55,22 +55,38 @@ public:
         file.create();
         // Write Matrices
         FileOutputStream * ostream = file.createOutputStream();
+
+        // createOutputStream() returns nullptr when the file can't be opened
+        // (e.g. the destination folder is not writable). Passing that to the
+        // GZIP stream crashed on the first write.
+        if (ostream == nullptr)
+            return false;
+
+        if (ostream->failedToOpen())
+        {
+            delete ostream;
+            return false;
+        }
+
         GZIPCompressorOutputStream compOutputStream(ostream, 0, true);
         int rows(M.rows());
         int cols(M.cols());
-        compOutputStream.write (&rows, sizeof(int));
-        compOutputStream.write (&cols, sizeof(int));
-        compOutputStream.write (&M(0,0), rows*cols*sizeof(ISSFloat));
+        bool okay = compOutputStream.write (&rows, sizeof(int))
+                 && compOutputStream.write (&cols, sizeof(int))
+                 && compOutputStream.write (&M(0,0), rows*cols*sizeof(ISSFloat));
         compOutputStream.flush();
-     
-        return true;
+
+        return okay && ostream->getStatus().wasOk();
     }
-    
+
     bool loadFromBinary( File & file )
     {
         int rows(0), cols(0);
-        
+
         FileInputStream * istream = file.createInputStream();
+        if (istream == nullptr)
+            return false;
+
         GZIPDecompressorInputStream compInputStream(istream, true);
         compInputStream.read (&rows, sizeof(int));
         compInputStream.read (&cols, sizeof(int));

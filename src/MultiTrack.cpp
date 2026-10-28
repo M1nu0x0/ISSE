@@ -448,6 +448,7 @@ bool MultiTrack::saveToXML( XmlElement & xml, const File & folderForAssets )
     
     File firstFile(tracks[0]->getFile());
     String firstFileName(firstFile.getFileNameWithoutExtension());
+    bool allSaved = true;
     for(int i=0; i < tracks.size(); ++i)
     {
         XmlElement* trackXML = new XmlElement ("TRACK");
@@ -457,29 +458,25 @@ bool MultiTrack::saveToXML( XmlElement & xml, const File & folderForAssets )
         
         File newFile = folderForAssets.getFullPathName() + "/" + firstFileName + extra + ".wav";
         bool okay = tracks[i]->getFile().copyFileTo ( newFile );
-        
-        
+
+
         if(!okay && i==0)
         {
-            String title("ERROR");
-            String message("Could not save the file. Please save as...");
-            String buttonText("Dismiss");
-            AlertWindow::showMessageBoxAsync (AlertWindow::WarningIcon, title,
-                                              message, buttonText);
+            // FileBasedDocument::saveAs() shows the error to the user.
+            deleteAndZero(trackXML);
             return false;
-            
-            
         }
-        
-        
-        
-        
+
+
+
+
         trackXML->setAttribute("filename", newFile.getFileName());
         xml.addChildElement(trackXML);
-        
-        tracks[i]->saveToXML(*trackXML, folderForAssets );
+
+        if (! tracks[i]->saveToXML(*trackXML, folderForAssets ))
+            allSaved = false;
     }
-    return true;
+    return allSaved;
 }
 
 bool MultiTrack::loadFromXML( const XmlElement & xml, const File & assetsFolder  )

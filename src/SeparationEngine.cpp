@@ -173,18 +173,20 @@ bool SeparationEngine::saveToXML( XmlElement & xml, const File & folderForAssets
 {
     
     XmlElement * engineXML = new XmlElement ("engine");
-      
+    bool allSaved = true;
+
     // Save internal mask layer
     for(int i=0; i < masks.size(); ++i)
     {
         XmlElement * maskXML = new XmlElement ("mask");
-        
+
         String maskFileName =  String(i) + ".Mask";
         maskXML->setAttribute("filepath", maskFileName);
         maskXML->setAttribute("source", i);
-        
+
         File f(folderForAssets.getFullPathName() + "/" + maskFileName);
-        masks[i]->saveAsBinary(f);
+        if (! masks[i]->saveAsBinary(f))
+            allSaved = false;
         engineXML->addChildElement(maskXML);
     }
     
@@ -210,9 +212,9 @@ bool SeparationEngine::saveToXML( XmlElement & xml, const File & folderForAssets
     
     
     processThread->save( folderForAssets.getFullPathName() + "/plugin.settings" );
-    
 
-    return true;
+
+    return allSaved;
 }
 
 bool SeparationEngine::loadFromXML( const XmlElement & xml, const File & assetsFolder  )

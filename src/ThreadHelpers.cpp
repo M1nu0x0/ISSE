@@ -23,37 +23,64 @@
 
  
 SaveThread::SaveThread( XMLSerializable * comp_, const File & file_, const File & logFile_ )
-    : ThreadWithProgressWindow ("Saving...", false, false), comp(comp_), file(file_), logFile(logFile_)
+    : ThreadWithProgressWindow ("Saving...", false, false), comp(comp_), file(file_), logFile(logFile_),
+      result (Result::fail ("Saving did not run"))
     {
-        
+
     }
 
 void SaveThread::run()
     {
-        
+
         const MessageManagerLock mml (Thread::getCurrentThread());
-        if (! mml.lockWasGained()) return;
-        
+        if (! mml.lockWasGained())
+        {
+            result = Result::fail ("Saving was interrupted");
+            return;
+        }
+
         XmlElement xmldoc("PROJECT");
-        
+
         File assetFolder( file.getParentDirectory().getFullPathName ()
                          + "/" +  file.getFileNameWithoutExtension() + "-assets");
-        
+
 //        assetFolder.deleteRecursively();
-        
+
+        // Stop before writing anything if the asset folder can't be used
+        // (e.g. a read-only location such as the root of the disk).
         Result 	res = assetFolder.createDirectory ();
+        if (res.failed() || ! assetFolder.hasWriteAccess())
+        {
+            result = Result::fail ("Could not create a writable folder for the project data:\n"
+                                   + assetFolder.getFullPathName()
+                                   + (res.failed() ? "\n" + res.getErrorMessage() : String::empty));
+            return;
+        }
+
         xmldoc.setAttribute( "assetfolder", file.getFileNameWithoutExtension() + "-assets" );
-        
+
         // serialize the document state
-        comp->saveToXML(xmldoc, assetFolder);
-        
+        const bool assetsSaved = comp->saveToXML(xmldoc, assetFolder);
+
         // Write to a file
-        bool okay =	xmldoc.writeToFile (file, "");
-        
+        bool okay =	assetsSaved && xmldoc.writeToFile (file, "");
+
         xmldoc.deleteAllChildElements ();
-        
+
         if(okay)
+        {
             MAIN_APP->undoManager.clearUndoHistory ();
+            result = Result::ok();
+        }
+        else if (! assetsSaved)
+        {
+            result = Result::fail ("Some project data could not be written to:\n"
+                                   + assetFolder.getFullPathName());
+        }
+        else
+        {
+            result = Result::fail ("Could not write the project file.");
+        }
 }
 
 LoadThread::LoadThread( XMLSerializable * comp_, const File & file_)

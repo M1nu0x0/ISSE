@@ -886,13 +886,15 @@ void Track::updateXRangeInSec ( Range<double> range )
 
 bool Track::saveToXML( XmlElement & xml, const File & folderForAssets )
 {
+    bool allSaved = true;
     for(int i=0; i < 2; ++i)
     {
         MaskLayer * mask = dynamic_cast<MaskLayer*>(allLayers[i+1]);
-        mask->saveToXML(xml, folderForAssets);
+        if (mask != nullptr && ! mask->saveToXML(xml, folderForAssets))
+            allSaved = false;
     }
 
-    return true;
+    return allSaved;
 }
 
 void Track::engineNewOutputs( File file, int source )
