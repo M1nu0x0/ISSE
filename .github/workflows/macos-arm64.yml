@@ -1,0 +1,74 @@
+name: macOS arm64 build
+
+on:
+  push:
+    branches: [ apple-silicon, master, main ]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - name: Checkout (with JUCE 3.0.0 submodule)
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Install dependencies
+        run: |
+          brew update >/dev/null || true
+          brew install fftw libomp
+
+      - name: Fetch Eigen 3.2 headers
+        run: |
+          set -euo pipefail
+          EIGEN_VER=3.2.10
+          curl -fsSL -o eigen.tar.gz "https://gitlab.com/libeigen/eigen/-/archive/${EIGEN_VER}/eigen-${EIGEN_VER}.tar.gz"
+          mkdir -p sdks/eigen
+          tar -xzf eigen.tar.gz --strip-components=1 -C sdks/eigen
+          test -f sdks/eigen/Eigen/Core
+
+      - name: Configure
+        run: |
+          cmake -S . -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DISSE_USE_OPENMP=ON
+
+      - name: Build
+        run: cmake --build build -j "$(sysctl -n hw.ncpu)" 2>&1 | tee build.log
+
+      - name: Inspect and sign bundle
+        run: |
+          set -euo pipefail
+          APP=build/ISSE.app
+          file "$APP/Contents/MacOS/ISSE"
+          lipo -archs "$APP/Contents/MacOS/ISSE"
+          echo "--- linked libraries"
+          otool -L "$APP/Contents/MacOS/ISSE"
+          # Fail if anything links outside the system (e.g. Homebrew dylibs)
+          if otool -L "$APP/Contents/MacOS/ISSE" | tail -n +2 | grep -E "/opt/homebrew|/usr/local"; then
+            echo "Non-system dylib linked; the app would not be self-contained" >&2
+            exit 1
+          fi
+          codesign --force --deep --sign - "$APP"
+          codesign --verify --verbose "$APP"
+          ditto -c -k --keepParent "$APP" ISSE-macos-arm64.zip
+
+      - name: Upload app
+        uses: actions/upload-artifact@v4
+        with:
+          name: ISSE-macos-arm64
+          path: ISSE-macos-arm64.zip
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: build.log
+          if-no-files-found: ignore
