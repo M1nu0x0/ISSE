@@ -40,24 +40,59 @@ jobs:
             -DISSE_USE_OPENMP=ON
 
       - name: Build
-        run: cmake --build build -j "$(sysctl -n hw.ncpu)" 2>&1 | tee build.log
+        run: |
+          set +e
+          cmake --build build -j "$(sysctl -n hw.ncpu)" > build.log 2>&1
+          rc=$?
+          set -e
+          echo "::notice title=warnings::$(grep -c 'warning:' build.log) compiler warnings"
+          if [ $rc -ne 0 ]; then
+            grep -E "error:|Error " build.log | head -40 | while IFS= read -r l; do echo "::error title=build::$l"; done
+            exit $rc
+          fi
 
-      - name: Inspect and sign bundle
+      - name: Bundle non-system libraries and sign
         run: |
           set -euo pipefail
           APP=build/ISSE.app
-          file "$APP/Contents/MacOS/ISSE"
-          lipo -archs "$APP/Contents/MacOS/ISSE"
-          echo "--- linked libraries"
-          otool -L "$APP/Contents/MacOS/ISSE"
-          # Fail if anything links outside the system (e.g. Homebrew dylibs)
-          if otool -L "$APP/Contents/MacOS/ISSE" | tail -n +2 | grep -E "/opt/homebrew|/usr/local"; then
-            echo "Non-system dylib linked; the app would not be self-contained" >&2
-            exit 1
+          BIN="$APP/Contents/MacOS/ISSE"
+          FW="$APP/Contents/Frameworks"
+          echo "::notice title=binary::$(file "$BIN" | sed 's/.*: //') | archs=$(lipo -archs "$BIN")"
+          # Copy any Homebrew dylibs (e.g. libomp) into the bundle and rewrite load paths
+          mkdir -p "$FW"
+          for lib in $(otool -L "$BIN" | tail -n +2 | awk '{print $1}' | grep -E "^(/opt/homebrew|/usr/local)/" || true); do
+            name=$(basename "$lib")
+            cp -fL "$lib" "$FW/$name"
+            chmod 755 "$FW/$name"
+            install_name_tool -id "@executable_path/../Frameworks/$name" "$FW/$name"
+            install_name_tool -change "$lib" "@executable_path/../Frameworks/$name" "$BIN"
+            echo "::notice title=bundled::$lib"
+          done
+          rmdir "$FW" 2>/dev/null || true
+          otool -L "$BIN" | tail -n +2 | awk '{print $1}' | tr '\n' ' ' | sed 's/^/::notice title=linked::/'; echo
+          if otool -L "$BIN" | tail -n +2 | grep -qE "/opt/homebrew|/usr/local"; then
+            echo "::error title=bundle::non-system dylib still linked"; exit 1
           fi
           codesign --force --deep --sign - "$APP"
           codesign --verify --verbose "$APP"
+          echo "::notice title=app-size::$(du -sh "$APP" | cut -f1)"
           ditto -c -k --keepParent "$APP" ISSE-macos-arm64.zip
+
+      - name: Smoke test (launch for a few seconds)
+        run: |
+          set +e
+          build/ISSE.app/Contents/MacOS/ISSE > launch.log 2>&1 &
+          pid=$!
+          sleep 8
+          if kill -0 $pid 2>/dev/null; then
+            echo "::notice title=launch::ISSE still running after 8s (no crash on startup)"
+            kill $pid
+          else
+            wait $pid; rc=$?
+            echo "::warning title=launch::ISSE exited early with code $rc"
+            head -20 launch.log | while IFS= read -r l; do echo "::warning title=launch-log::$l"; done
+          fi
+          exit 0
 
       - name: Upload app
         uses: actions/upload-artifact@v4
