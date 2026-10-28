@@ -87,6 +87,9 @@ set(JUCE_SOURCES)
 foreach(m ${JUCE_MODULES})
   list(APPEND JUCE_SOURCES ${JUCE_MODULES_DIR}/${m}/${m}.mm)
 endforeach()
+# See cmake/juce_mac_prefix.h (Carbon "Point" clash with modern SDKs).
+set_source_files_properties(${JUCE_SOURCES} PROPERTIES
+  COMPILE_OPTIONS "-include;${CMAKE_SOURCE_DIR}/cmake/juce_mac_prefix.h")
 
 set(ISSE_SOURCES
   JuceLibraryCode/BinaryData.cpp

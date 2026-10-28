@@ -1,0 +1,78 @@
+diff --git a/modules/juce_audio_devices/native/juce_mac_CoreAudio.cpp b/modules/juce_audio_devices/native/juce_mac_CoreAudio.cpp
+index 60b82b7..e11b11e 100644
+--- a/modules/juce_audio_devices/native/juce_mac_CoreAudio.cpp
++++ b/modules/juce_audio_devices/native/juce_mac_CoreAudio.cpp
+@@ -1262,7 +1262,7 @@ public:
+         if (deviceName.isEmpty())
+             deviceName = inputDeviceName;
+ 
+-        if (index >= 0)
++        if (inputIndex >= 0 || outputIndex >= 0)
+             return new CoreAudioIODevice (deviceName,
+                                           inputIds [inputIndex],
+                                           inputIndex,
+diff --git a/modules/juce_core/native/juce_osx_ObjCHelpers.h b/modules/juce_core/native/juce_osx_ObjCHelpers.h
+index 10878d0..944c93d 100644
+--- a/modules/juce_core/native/juce_osx_ObjCHelpers.h
++++ b/modules/juce_core/native/juce_osx_ObjCHelpers.h
+@@ -143,7 +143,8 @@ struct ObjCClass
+     static id sendSuperclassMessage (id self, SEL selector)
+     {
+         objc_super s = { self, [SuperclassType class] };
+-        return objc_msgSendSuper (&s, selector);
++        // arm64: objc_msgSend* must be called through a correctly typed pointer
++        return ((id (*) (struct objc_super*, SEL)) objc_msgSendSuper) (&s, selector);
+     }
+ 
+     template <typename Type>
+diff --git a/modules/juce_gui_basics/native/juce_mac_NSViewComponentPeer.mm b/modules/juce_gui_basics/native/juce_mac_NSViewComponentPeer.mm
+index 54bce81..605d3c5 100644
+--- a/modules/juce_gui_basics/native/juce_mac_NSViewComponentPeer.mm
++++ b/modules/juce_gui_basics/native/juce_mac_NSViewComponentPeer.mm
+@@ -607,8 +607,8 @@ public:
+            #endif
+             if ([ev respondsToSelector: @selector (deviceDeltaX)])
+             {
+-                wheel.deltaX = checkDeviceDeltaReturnValue ((float) objc_msgSend_fpret (ev, @selector (deviceDeltaX)));
+-                wheel.deltaY = checkDeviceDeltaReturnValue ((float) objc_msgSend_fpret (ev, @selector (deviceDeltaY)));
++                wheel.deltaX = checkDeviceDeltaReturnValue ((float) ((CGFloat (*) (id, SEL)) objc_msgSend) (ev, @selector (deviceDeltaX)));
++                wheel.deltaY = checkDeviceDeltaReturnValue ((float) ((CGFloat (*) (id, SEL)) objc_msgSend) (ev, @selector (deviceDeltaY)));
+             }
+         }
+         @catch (...)
+@@ -1457,7 +1457,7 @@ private:
+             if ((! owner->textWasInserted) && (owner == nullptr || ! owner->redirectKeyDown (ev)))
+             {
+                 objc_super s = { self, [NSView class] };
+-                objc_msgSendSuper (&s, @selector (keyDown:), ev);
++                ((void (*) (struct objc_super*, SEL, id)) objc_msgSendSuper) (&s, @selector (keyDown:), ev);
+             }
+         }
+     }
+@@ -1469,7 +1469,7 @@ private:
+         if (owner == nullptr || ! owner->redirectKeyUp (ev))
+         {
+             objc_super s = { self, [NSView class] };
+-            objc_msgSendSuper (&s, @selector (keyUp:), ev);
++            ((void (*) (struct objc_super*, SEL, id)) objc_msgSendSuper) (&s, @selector (keyUp:), ev);
+         }
+     }
+ 
+@@ -1610,7 +1610,7 @@ private:
+                 return true;
+ 
+         objc_super s = { self, [NSView class] };
+-        return objc_msgSendSuper (&s, @selector (performKeyEquivalent:), ev) != nil;
++        return ((BOOL (*) (struct objc_super*, SEL, id)) objc_msgSendSuper) (&s, @selector (performKeyEquivalent:), ev) != NO;
+     }
+     #endif
+ 
+@@ -1763,7 +1763,7 @@ private:
+         {
+             owner->isZooming = true;
+             objc_super s = { self, [NSWindow class] };
+-            objc_msgSendSuper (&s, @selector (zoom:), sender);
++            ((void (*) (struct objc_super*, SEL, id)) objc_msgSendSuper) (&s, @selector (zoom:), sender);
+             owner->isZooming = false;
+ 
+             owner->redirectMovedOrResized();
