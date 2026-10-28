@@ -106,8 +106,9 @@ void MaskLayer::dirty()
 
 bool MaskLayer::saveToXML( XmlElement & xml, const File & folderForAssets )
 {
+    // No mask attached: nothing to write, not a save error.
     if(mask==NULL)
-        return false;
+        return true;
 
     XmlElement * maskXML = new XmlElement ("maskimage");
     String maskFileName = String(trackNum) + "-" + String(source) + ".png";
@@ -150,13 +151,17 @@ bool MaskLayer::saveAsBinary( File & file )
     imgFile.deleteFile();
     imgFile.create();
     
-    FileOutputStream * imgstream = imgFile.createOutputStream();
-    PNGImageFormat pngFormat;
-    pngFormat.writeImageToStream(image, *imgstream);
-    imgstream->flush();
-    deleteAndZero(imgstream);
+    ScopedPointer<FileOutputStream> imgstream (imgFile.createOutputStream());
 
-    return true;
+    // nullptr when the file can't be opened (e.g. folder not writable).
+    if (imgstream == nullptr || imgstream->failedToOpen())
+        return false;
+
+    PNGImageFormat pngFormat;
+    bool okay = pngFormat.writeImageToStream(image, *imgstream);
+    imgstream->flush();
+
+    return okay && imgstream->getStatus().wasOk();
 }
 
 bool MaskLayer::loadAsBinary( File & file )

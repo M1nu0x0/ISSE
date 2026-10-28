@@ -30,12 +30,16 @@ class SaveThread  : public ThreadWithProgressWindow
 public:
     SaveThread( XMLSerializable * comp_, const File & file_, const File & logFile_ );
     void run();
-    
+
+    // Outcome of the last run(); fails if any part of the project could not be written.
+    const Result & getResult() const { return result; }
+
 private:
     XMLSerializable * comp;
     const File & file;
     const File & logFile;
-    
+    Result result;
+
 };
 
 class LoadThread  : public ThreadWithProgressWindow
