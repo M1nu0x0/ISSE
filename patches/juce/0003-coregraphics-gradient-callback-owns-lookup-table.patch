@@ -1,0 +1,74 @@
+diff --git a/modules/juce_graphics/native/juce_mac_CoreGraphicsContext.mm b/modules/juce_graphics/native/juce_mac_CoreGraphicsContext.mm
+index 7ae0114..d66927e 100644
+--- a/modules/juce_graphics/native/juce_mac_CoreGraphicsContext.mm
++++ b/modules/juce_graphics/native/juce_mac_CoreGraphicsContext.mm
+@@ -124,6 +124,24 @@ ImagePixelData::Ptr NativeImageType::create (Image::PixelFormat format, int widt
+ }
+ 
+ //==============================================================================
++// Modern macOS evaluates CGShading functions lazily (e.g. when a layer's
++// display list is replayed), after the SavedState that JUCE 3.0.0 passed as
++// the callback's info may already have changed or been deleted. Give each
++// CGFunction its own copy of the lookup table, released by CoreGraphics.
++namespace
++{
++    struct CGGradientLookupInfo
++    {
++        HeapBlock<PixelARGB> table;
++        int numEntries;
++    };
++
++    void releaseCGGradientLookupInfo (void* info)
++    {
++        delete static_cast<CGGradientLookupInfo*> (info);
++    }
++}
++
+ CoreGraphicsContext::CoreGraphicsContext (CGContextRef c, const float h, const float scale)
+     : context (c),
+       flipHeight (h),
+@@ -140,7 +158,7 @@ CoreGraphicsContext::CoreGraphicsContext (CGContextRef c, const float h, const f
+     greyColourSpace = CGColorSpaceCreateDeviceGray();
+     gradientCallbacks.version = 0;
+     gradientCallbacks.evaluate = SavedState::gradientCallback;
+-    gradientCallbacks.releaseInfo = 0;
++    gradientCallbacks.releaseInfo = releaseCGGradientLookupInfo;
+     setFont (Font());
+ }
+ 
+@@ -676,7 +694,20 @@ CGShadingRef CoreGraphicsContext::SavedState::getShading (CoreGraphicsContext& o
+         ColourGradient& g = *(fillType.gradient);
+         numGradientLookupEntries = g.createLookupTable (fillType.transform, gradientLookupTable) - 1;
+ 
+-        CGFunctionRef function = CGFunctionCreate (this, 1, 0, 4, 0, &(owner.gradientCallbacks));
++        CGGradientLookupInfo* const info = new CGGradientLookupInfo();
++        info->numEntries = numGradientLookupEntries;
++        info->table.malloc ((size_t) numGradientLookupEntries + 1);
++        memcpy (info->table, gradientLookupTable, sizeof (PixelARGB) * ((size_t) numGradientLookupEntries + 1));
++
++        // Static, so the callbacks outlive this context too.
++        static const CGFunctionCallbacks callbacks = { 0, &SavedState::gradientCallback, &releaseCGGradientLookupInfo };
++        CGFunctionRef function = CGFunctionCreate (info, 1, 0, 4, 0, &callbacks);
++
++        if (function == 0)
++        {
++            delete info;
++            return 0;
++        }
+         CGPoint p1 (convertToCGPoint (g.point1));
+ 
+         if (g.isRadial)
+@@ -700,10 +731,10 @@ CGShadingRef CoreGraphicsContext::SavedState::getShading (CoreGraphicsContext& o
+ 
+ void CoreGraphicsContext::SavedState::gradientCallback (void* info, const CGFloat* inData, CGFloat* outData)
+ {
+-    const SavedState* const s = static_cast <const SavedState*> (info);
++    const CGGradientLookupInfo* const g = static_cast <const CGGradientLookupInfo*> (info);
+ 
+-    const int index = roundToInt (s->numGradientLookupEntries * inData[0]);
+-    PixelARGB colour (s->gradientLookupTable [jlimit (0, s->numGradientLookupEntries, index)]);
++    const int index = roundToInt (g->numEntries * inData[0]);
++    PixelARGB colour (g->table [jlimit (0, g->numEntries, index)]);
+     colour.unpremultiply();
+ 
+     outData[0] = colour.getRed()   / 255.0f;
