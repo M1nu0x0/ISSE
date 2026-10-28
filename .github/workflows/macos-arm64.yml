@@ -35,9 +35,10 @@ jobs:
       - name: Configure
         run: |
           cmake -S . -B build \
-            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
             -DCMAKE_OSX_ARCHITECTURES=arm64 \
-            -DISSE_USE_OPENMP=ON
+            -DISSE_USE_OPENMP=ON 2>&1 | tee configure.log
+          echo "::notice title=configure::$(grep -E 'FFTW|OpenMP|libomp|JUCE patch' configure.log | awk 'BEGIN{ORS="%0A"} {print}')"
 
       - name: Build
         run: |
@@ -98,7 +99,14 @@ jobs:
           else
             wait $pid; rc=$?
             echo "::warning title=launch::ISSE exited early with code $rc"
-            head -20 launch.log | while IFS= read -r l; do echo "::warning title=launch-log::$l"; done
+            enc() { sed -e 's/%/%25/g' | awk 'BEGIN{ORS="%0A"} {print}'; }
+            echo "::warning title=launch-log::$(head -40 launch.log | cut -c1-300 | enc)"
+            # Re-run under lldb to capture the crashing backtrace
+            lldb --batch -o "process launch" -k "thread backtrace all" -k "register read pc lr sp" -k "quit" \
+              -- build/ISSE.app/Contents/MacOS/ISSE > lldb.log 2>&1 || true
+            echo "::warning title=lldb-crash::$(grep -nE 'stop reason|EXC_|signal' lldb.log | head -5 | cut -c1-300 | enc)"
+            # Crashed thread first, then the rest (frames trimmed)
+            echo "::warning title=lldb-bt::$(awk '/stop reason/{p=1} p' lldb.log | grep -E '^\* thread|^  thread|frame #' | head -60 | cut -c1-260 | enc)"
           fi
           exit 0
 
@@ -113,5 +121,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: build-log
-          path: build.log
+          path: |
+            build.log
+            configure.log
+            launch.log
+            lldb.log
           if-no-files-found: ignore
