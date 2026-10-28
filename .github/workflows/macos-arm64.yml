@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -115,6 +115,19 @@ jobs:
         with:
           name: ISSE-macos-arm64
           path: ISSE-macos-arm64.zip
+
+      - name: Publish prerelease (apple-silicon-latest)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/apple-silicon'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG=apple-silicon-latest
+          gh release delete "$TAG" -y --cleanup-tag 2>/dev/null || true
+          gh release create "$TAG" ISSE-macos-arm64.zip \
+            --prerelease --target "${{ github.sha }}" \
+            --title "ISSE arm64 (latest apple-silicon build)" \
+            --notes "Ad-hoc signed, not notarized. Built from ${{ github.sha }}. If downloaded with a browser, run: xattr -dr com.apple.quarantine ISSE.app"
+          echo "::notice title=release::https://github.com/${{ github.repository }}/releases/download/$TAG/ISSE-macos-arm64.zip"
 
       - name: Upload build log
         if: always()
