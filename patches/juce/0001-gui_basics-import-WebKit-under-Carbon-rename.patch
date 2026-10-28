@@ -1,0 +1,19 @@
+diff --git a/modules/juce_gui_basics/juce_gui_basics.cpp b/modules/juce_gui_basics/juce_gui_basics.cpp
+index a66d116..4197c21 100644
+--- a/modules/juce_gui_basics/juce_gui_basics.cpp
++++ b/modules/juce_gui_basics/juce_gui_basics.cpp
+@@ -46,8 +46,14 @@
+ 
+ //==============================================================================
+ #if JUCE_MAC
++ // Modern macOS SDKs pull CarbonCore/QuickDraw headers in through WebKit, so
++ // these must also be imported under the Carbon "Point"/"Component" rename.
++ #define Point CarbonDummyPointName
++ #define Component CarbonDummyCompName
+  #import <WebKit/WebKit.h>
+  #import <IOKit/pwr_mgt/IOPMLib.h>
++ #undef Point
++ #undef Component
+ 
+  #if JUCE_SUPPORT_CARBON
+   #define Point CarbonDummyPointName

@@ -39,6 +39,25 @@ set(EIGEN_DIR ${CMAKE_SOURCE_DIR}/sdks/eigen CACHE PATH "Eigen 3.2 headers")
 if(NOT EXISTS ${JUCE_MODULES_DIR}/juce_core/juce_core.mm)
   message(FATAL_ERROR "JUCE submodule missing. Run: git submodule update --init sdks/juce")
 endif()
+# Apply local fixes to the pinned JUCE 3.0.0 (idempotent: skipped if already applied).
+find_package(Git REQUIRED)
+file(GLOB JUCE_PATCHES ${CMAKE_SOURCE_DIR}/patches/juce/*.patch)
+list(SORT JUCE_PATCHES)
+foreach(p ${JUCE_PATCHES})
+  execute_process(COMMAND ${GIT_EXECUTABLE} apply --reverse --check ${p}
+                  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/sdks/juce
+                  RESULT_VARIABLE already_applied OUTPUT_QUIET ERROR_QUIET)
+  if(NOT already_applied EQUAL 0)
+    execute_process(COMMAND ${GIT_EXECUTABLE} apply ${p}
+                    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/sdks/juce
+                    RESULT_VARIABLE apply_result)
+    if(NOT apply_result EQUAL 0)
+      message(FATAL_ERROR "Failed to apply JUCE patch ${p}")
+    endif()
+    message(STATUS "Applied JUCE patch: ${p}")
+  endif()
+endforeach()
+
 if(NOT EXISTS ${EIGEN_DIR}/Eigen/Core)
   message(FATAL_ERROR "Eigen headers not found in ${EIGEN_DIR}. See .github/workflows/macos-arm64.yml for how to fetch Eigen 3.2.")
 endif()

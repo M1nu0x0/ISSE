@@ -47,7 +47,15 @@ jobs:
           set -e
           echo "::notice title=warnings::$(grep -c 'warning:' build.log) compiler warnings"
           if [ $rc -ne 0 ]; then
-            grep -E "error:|Error " build.log | head -40 | while IFS= read -r l; do echo "::error title=build::$l"; done
+            # Annotations are capped at 10 errors per step, so join lines with %0A.
+            enc() { sed -e 's/%/%25/g' | awk 'BEGIN{ORS="%0A"} {print}'; }
+            echo "::error title=failed-units::$(grep -E '\.o\] Error' build.log | sed 's#.*CMakeFiles/ISSE.dir/##' | sort -u | head -30 | enc)"
+            n=$(grep -n -m1 "error:" build.log | cut -d: -f1)
+            if [ -n "$n" ]; then
+              s=$(( n > 30 ? n - 30 : 1 ))
+              echo "::error title=first-error-context::$(sed -n "${s},$((n + 6))p" build.log | grep -vE '^\s*$' | cut -c1-400 | enc)"
+            fi
+            echo "::error title=unique-errors::$(grep -E 'error:' build.log | sed 's#^/Users/runner/work/ISSE/ISSE/##; s#^/Applications/Xcode[^/]*/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/#SDK/#' | sort | uniq -c | sort -rn | head -60 | cut -c1-300 | enc)"
             exit $rc
           fi
 

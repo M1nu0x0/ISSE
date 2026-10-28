@@ -1,0 +1,2 @@
+# JUCE 3.0.0 sources use CRLF; keep patch files byte-exact so they apply.
+patches/** -text
